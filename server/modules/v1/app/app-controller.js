@@ -16,10 +16,43 @@
 const jwt = require('jsonwebtoken');
 const Promise = require('bluebird');
 const config = require('../../../config/');
+const mysql = require('mysql2/promise');
 
 const request = Promise.promisifyAll(require('request'));
 
 class AppController {
+
+  /**
+   * Método que retorna la salud de la aplicacion.
+   * Method that returns the application health.
+   *
+   * @param \ req, res
+   * @return \Json
+   */
+  async healthCheck(req, res, next) {
+
+    this.registerService();
+
+    return res.status(200).json({ 'health-check': 'ok' });
+  }
+
+  /**
+   * Método que retorna una coneccion MySQL.
+   * Method that returns a MySQL connection.
+   *
+   * @return \MySQL Connection
+   */
+  getConnection() {
+
+    return mysql.createConnection({
+      host: config.database.mysql.host,
+      user: config.database.mysql.user,
+      password: config.database.mysql.password,
+      database: config.database.mysql.database,
+      Promise: Promise
+    });
+
+  }
 
   /**
    * Método que permite al usuario identificarse.
@@ -53,6 +86,7 @@ class AppController {
             msg: err
           });
         }
+
         const resBody = JSON.parse(rs.body)
         const token = resBody.token_type + ' ' + resBody.access_token;
         resolve(token);
@@ -68,7 +102,7 @@ class AppController {
    * @param \ req, res, next
    * @return \Json
    */
-  async inviteUser(req, res, next) {
+  async inviteUser(data) {
     const key = config.security.private_key;
 
     const headers = {
@@ -79,15 +113,16 @@ class AppController {
     const payload = {
       user_id: "",
       connection: config.security.connection,
-      email: req.body.email,
-      password: req.body.password,
+      name: data.email,
+      email: data.email,
+      password: data.password,
       user_metadata: {},
-      email_verified: false,
-      verify_email: true,
+      email_verified: true,
+      verify_email: false,
       app_metadata: {}
     }
 
-
+    return new Promise(resolve => {
       request.post({
         headers: headers,
         uri: config.security.auth_url + 'api/v2/users',
@@ -95,47 +130,93 @@ class AppController {
         method: 'POST'
       }, async (err, rs) => {
         if (err) {
-          return res.status(500).json(err);
+          resolve({
+            code: 500,
+            msg: err
+          });
         }
-        return res.status(rs.statusCode).json(rs);
+        const body = rs.body;
+        resolve({
+          code: rs.statusCode,
+          msg: rs
+        });
+
       });
+    });
 
   }
 
   /**
-   * Método que permite al usuario identificarse.
-   * Method that allows the user to identify.
+   * Método que retorna una coneccion MySQL.
+   * Method that returns a MySQL connection.
    *
-   * @param \ req, res, next
-   * @return \Json
+   * @return \MySQL Connection
    */
-  async login(req, res, next) {
-    const token = await this.getToken();
-    const key = config.security.private_key;
-    const createToken = (user) => {
-      let token = jwt.sign(user, key, {
-        expiresIn: 60 * 60 * 5
-      });
-      return token;
-    };
+  async registerService(req, res, next) {
 
-    request.getAsync({
-      url: config.resources.users,
-      method: 'GET'
-    }).then((doc) => {
-      let rs = JSON.parse(doc.body);
-      let authUser = rs.clients.filter((user) => {
-        if (user.email == req.body.email) {
-          return user;
-        }
-      });
+    try {
+      const connection = await this.getConnection();
+      const [rows] = await connection.execute('SELECT * FROM users WHERE `email` = ?', [req.body.email]);
+      let invited;
+      let user_data;
+      let id_user;
+      const group_name = 'default';
 
-      if (authUser.length > 0) {
-        return res.status(200).json({ 'user_token': createToken(authUser[0]), 'token': token });
+      if (rows.length === 0) {
+        invited = await this.inviteUser(req.body);
+        user_data = JSON.parse(invited.msg.body);
+        id_user = user_data.user_id;
+        await connection.execute(
+          'INSERT INTO users (id_user, name, email, active) VALUES (? , ?, ?, ?)',
+          [id_user, user_data.email, user_data.email, 1]
+        );
       } else {
-        return res.status(404).json({ 'message': 'User not Found' });
+        invited = { code: 201, body: rows };
+        user_data = rows[0];
+        id_user = user_data.id_user;
       }
-    }).catch(err => next(err));
+
+      if (invited && invited.code === 201 || invited.code === 409) {
+
+        const app = await connection.execute('INSERT INTO apps (name, id_client) VALUES (? , ?)', [req.body.app_name, req.body.id_client]);
+        const group = await connection.execute('INSERT INTO groups (name, active) VALUES (? , ?)', [group_name, 1]);
+
+        await connection.execute('INSERT INTO app_group (id_app, id_group) VALUES (? , ?)', [app[0].insertId, group[0].insertId]);
+        await connection.execute(
+          'INSERT INTO roles_and_responsibilities (id_user, id_group, id_rol, active) VALUES (? , ?, ?, ?)',
+          [id_user, group[0].insertId, 1, 1]
+        );
+        await connection.execute('INSERT INTO licenses (id_app, end_date, active) VALUES (? , ?, ?)', [app[0].insertId, req.body.end_date, 1]);
+        connection.end();
+        
+        const service = {
+          id_client: req.body.id_client,
+          app: {
+            id: app[0].insertId,
+            name: req.body.app_name
+          },
+          group: {
+            id: group[0].insertId,
+            name: group_name
+          },
+          user: {
+            id: id_user,
+            mail: user_data.email
+          }
+        };
+
+        return res.status(200).json(service);
+      } else {
+        return res.status(invited.code).json(invited);
+      }
+
+    } catch (err) {
+      return res.status(500).json({
+        err: err,
+        msg: 'Error in Register Service'
+      });
+    }
+
   }
 
 }
