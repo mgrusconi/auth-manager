@@ -27,7 +27,7 @@ function expressApp() {
   app.use(bodyParser.json());
 
   // Request Authentocation middleware should be above methodOverride
-  //app.all('/app/*', [require('./validateRequest'), require('./auth')]);
+  app.all('/app/*', [require('./validateRequest'), /*require('./auth')*/]);
   
   //Routing
   app.use('/app/', routings);

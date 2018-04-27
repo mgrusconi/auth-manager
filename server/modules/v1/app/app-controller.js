@@ -188,7 +188,7 @@ class AppController {
         );
         await connection.execute('INSERT INTO licenses (id_app, end_date, active) VALUES (? , ?, ?)', [app[0].insertId, req.body.end_date, 1]);
         connection.end();
-        
+
         const service = {
           id_client: req.body.id_client,
           app: {
@@ -217,6 +217,26 @@ class AppController {
       });
     }
 
+  }
+
+  /**
+   * Método que retorna los permisos de un usuario.
+   * Method that returns the permissions of a user.
+   *
+   * @return \MySQL Connection
+   */
+  async getPermissions(req, res, next) {
+
+    const connection = await this.getConnection();
+    const [rows] = await connection.execute('SELECT * FROM roles_and_responsibilities as rr INNER JOIN app_group as ag ON ag.id_group = rr.id_group WHERE ag.id_app = ? and rr.id_user = ? and rr.active = ? ',
+      [req.params.id_app, req.params.id_user, 1]);
+
+    if (rows.length === 0) {
+      return res.status(401).json(false);
+    } else {
+      return res.status(200).json(true);
+    }
+    
   }
 
 }

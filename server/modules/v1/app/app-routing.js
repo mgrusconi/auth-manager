@@ -161,6 +161,69 @@ router.route('/user').post((...args) => controller.inviteUser(...args));
  */
 router.route('/registerservice').post((...args) => controller.registerService(...args));
 
+/**
+ * @swagger
+ * definitions:
+ *   invite:
+ *     type: object
+ *     required:
+ *       - email
+ *       - password
+ *     properties:
+ *       email:
+ *         type: string
+ *         default: "manningblankenship@quotezart.com"
+ *         description: e-mail User
+ *       password:
+ *         type: string
+ *         default: "somePaswword"
+ *         description: e-mail User
+ */
+
+/**
+ * @swagger
+ * /app/permissions/{id_app}/{id_user}:
+ *   get:
+ *     tags:
+ *       - API v1
+ *     summary: TODO
+ *     description: TODO.
+ *     produces:
+ *       - application/json
+ *     parameters:
+ *       - name: id_app
+ *         in: path
+ *         description: TODO
+ *         required: true
+ *         type: integer
+ *         default: 1
+ *       - name: id_user
+ *         in: path
+ *         description: TODO
+ *         required: true
+ *         type: string
+ *         default: 1
+ *       - name: x-key
+ *         in: header
+ *         description: API key
+ *         required: true
+ *         type: string
+ *         format: string
+ *         default: 2fvTdG53VCp6z8ZbV66h
+ *       - name: user-token
+ *         in: header
+ *         description: User Token JWT
+ *         type: string
+ *         format: string
+ *         default:
+ *     responses:
+ *       200:
+ *         description: app!
+ *         schema:
+ *           $ref: ''
+ */
+router.route('/permissions/:id_app/:id_user').get((...args) => controller.getPermissions(...args));
+
 
 
 module.exports = router;
